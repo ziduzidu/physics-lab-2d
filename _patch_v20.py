@@ -58,6 +58,32 @@ CSS = u"""
   border-left:2px solid rgba(56,189,248,.55)}
 .f3tip b{color:#0c4a6e}
 .f3m b{color:#334155}
+/* 选中物体后的参数调节块 */
+.f3sep{height:1px;margin:11px 0 9px;background:linear-gradient(90deg,rgba(56,189,248,.5),rgba(148,163,184,.1))}
+.f3selh{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#0f172a;margin-bottom:7px}
+.f3selh i{width:9px;height:9px;border-radius:50%;background:var(--mc,#38bdf8);
+  box-shadow:0 0 0 3px rgba(56,189,248,.15)}
+.f3selh em{font-style:normal;font-size:10.5px;font-weight:700;color:#0369a1;
+  background:rgba(56,189,248,.16);border-radius:6px;padding:1px 6px}
+.f3row{display:flex;align-items:center;gap:9px;margin:8px 0}
+.f3row>span{flex:0 0 30px;font-size:11.5px;color:#64748b}
+.f3row>input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;
+  border-radius:3px;background:linear-gradient(90deg,#7dd3fc,#0ea5e9);outline:none;cursor:pointer}
+.f3row>input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
+  border-radius:50%;background:#fff;border:2.5px solid #0ea5e9;box-shadow:0 1px 4px rgba(2,6,23,.28)}
+.f3row>input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;
+  background:#fff;border:2.5px solid #0ea5e9}
+.f3row>b{flex:0 0 54px;text-align:right;font-size:11.5px;font-weight:700;color:#0f172a;
+  font-variant-numeric:tabular-nums}
+.f3acts{display:flex;gap:6px;margin-top:10px}
+.f3acts button{flex:1;font:inherit;font-size:11.5px;padding:7px 0;border-radius:8px;
+  border:1px solid rgba(148,163,184,.42);background:rgba(248,250,252,.92);color:#334155;
+  cursor:pointer;transition:background .15s,border-color .15s,transform .1s,color .15s}
+.f3acts button:hover{background:rgba(56,189,248,.12);border-color:rgba(56,189,248,.55)}
+.f3acts button:active{transform:scale(.96)}
+.f3acts button.on{background:rgba(56,189,248,.2);border-color:#0ea5e9;color:#0369a1;font-weight:700}
+.f3acts button.danger{color:#b91c1c;border-color:rgba(248,113,113,.5)}
+.f3acts button.danger:hover{background:rgba(248,113,113,.13);border-color:rgba(248,113,113,.75)}
 @media (prefers-reduced-motion:reduce){.f3m{transition:none}.f3m:active{transform:none}}
 /* 手机底部导航：11 项均分会溢出，改成「能均分就均分，放不下就横向滚」 */
 @media(max-width:600px){
@@ -163,7 +189,7 @@ rep(u'loadScene',
 # ================================================================ 10. 版本号 + 标题
 rep(u'version',
     u"'<i>v19 · 单文件离线版</i>",
-    u"'<i>v20 · 单文件离线版</i>")
+    u"'<i>v20.1 · 单文件离线版</i>")
 rep(u'title',
     u'<h1>高考物理 <em>·</em> 力学与能量动量 2D 仿真实验室</h1>',
     u'<h1>高考物理 <em>·</em> 力学与能量动量仿真实验室</h1>')
