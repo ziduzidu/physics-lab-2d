@@ -138,9 +138,14 @@ Page({
     try {
       const A = engine.App;
       const isSandbox = (A.mode === 'sandbox');
+      const isF3 = (A.mode === 'free3d');
       const sc = A.scene;
       const data = {
         isSandbox: isSandbox,
+        isF3: isF3,
+        f3mat: isF3 && engine.F3MAT ? engine.F3MAT[engine.F3.mat].n : '',
+        f3run: isF3 && !!engine.F3.run,
+        f3zg: isF3 && !!engine.F3.zeroG,
         brief: sc ? (sc.brief || '') : '',
         playing: !!A.playing,
         params: [],
@@ -387,6 +392,68 @@ Page({
   },
 
   /* ---------------- 沙盒工具 ---------------- */
+  /* ---- v20 三维自由沙盒 ---- */
+  onF3Add(e) {
+    try {
+      engine.f3Add(e.currentTarget.dataset.k);
+      engine.f3Render();
+      this.syncF3();
+    } catch (err) { wx.showToast({ title: '添加失败', icon: 'none' }); }
+  },
+  onF3Mat() {
+    try {
+      const K = engine.F3MATK, M = engine.F3MAT;
+      engine.F3.mat = K[(K.indexOf(engine.F3.mat) + 1) % K.length];
+      engine.f3Toast('材质：' + M[engine.F3.mat].n + '（密度 ' + M[engine.F3.mat].d + ' kg/m³）');
+      engine.f3Bar(); engine.f3Panel();
+      this.syncF3();
+    } catch (e) { }
+  },
+  onF3Boom() {
+    try {
+      const F3 = engine.F3;
+      let p = F3C_t(engine);
+      if (F3.sel >= 0 && F3.ms[F3.sel]) {
+        const bp = F3.ms[F3.sel].b.position;
+        p = { x: bp.x, y: bp.y, z: bp.z };
+      }
+      engine.f3Boom(p.x, p.y, p.z, 1);
+    } catch (e) { }
+  },
+  onF3Preset() {
+    try {
+      engine.F3PRESET = ((engine.F3PRESET || 0) + 1) % 5;
+      [engine.f3Default, engine.f3P1, engine.f3P2, engine.f3P3, engine.f3P4][engine.F3PRESET]();
+      engine.f3Render();
+    } catch (e) { }
+  },
+  onF3Clear() { try { engine.f3Clear(); engine.f3Render(); } catch (e) { } },
+  onF3Cam() {
+    try {
+      engine.F3C.tYaw = -0.82; engine.F3C.tPitch = 0.40; engine.F3C.tDist = 16.5;
+      engine.F3C.tgt.x = 0; engine.F3C.tgt.y = 1.15; engine.F3C.tgt.z = 0;
+    } catch (e) { }
+  },
+  onF3Run() {
+    try { engine.F3.run = engine.F3.run ? 0 : 1; this.syncF3(); } catch (e) { }
+  },
+  onF3G() {
+    try {
+      engine.F3.zeroG = engine.F3.zeroG ? 0 : 1;
+      engine.F3.world.gravity.set(0, engine.F3.zeroG ? 0 : -9.82, 0);
+      engine.f3Toast(engine.F3.zeroG ? '零重力：飘起来了' : '重力恢复');
+      this.syncF3();
+    } catch (e) { }
+  },
+  syncF3() {
+    try {
+      this.setData({
+        f3mat: engine.F3MAT[engine.F3.mat].n,
+        f3run: !!engine.F3.run,
+        f3zg: !!engine.F3.zeroG
+      });
+    } catch (e) { }
+  },
   onAdd(e) {
     const k = e.currentTarget.dataset.k;
     try {
