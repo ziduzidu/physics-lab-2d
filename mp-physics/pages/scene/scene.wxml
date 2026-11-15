@@ -50,6 +50,38 @@
       </scroll-view>
     </view>
 
+    <!-- 选中物体的参数调节 -->
+    <view class="f3sel" wx:if="{{isF3 && f3sel.on}}">
+      <view class="f3selh">选中 {{f3sel.kind}} · {{f3sel.mat}}{{f3sel.fixed ? ' · 固定' : ''}}</view>
+      <view class="f3row"><text class="f3k">尺寸</text>
+        <slider class="f3sl" min="50" max="220" step="5" value="{{f3sel.scaleV}}"
+                activeColor="#0ea5e9" block-size="18"
+                bindchanging="onF3Size" bindchange="onF3SizeEnd"/>
+        <text class="f3v">{{f3sel.scaleTxt}}</text></view>
+      <view class="f3row"><text class="f3k">密度</text>
+        <slider class="f3sl" min="0" max="1000" step="5"
+                activeColor="#0ea5e9" block-size="18"
+                bindchanging="onF3Dens" bindchange="onF3DensEnd"/>
+        <text class="f3v">{{f3sel.dens}}</text></view>
+      <view class="f3row"><text class="f3k">摩擦</text>
+        <slider class="f3sl" min="0" max="120" step="2"
+                activeColor="#0ea5e9" block-size="18"
+                bindchanging="onF3Fr" bindchange="onF3FrEnd"/>
+        <text class="f3v">{{f3sel.fr}}</text></view>
+      <view class="f3row"><text class="f3k">弹性</text>
+        <slider class="f3sl" min="0" max="98" step="2"
+                activeColor="#0ea5e9" block-size="18"
+                bindchanging="onF3Re" bindchange="onF3ReEnd"/>
+        <text class="f3v">{{f3sel.re}}</text></view>
+      <view class="f3acts">
+        <button class="btn {{f3sel.fixed ? 'on' : ''}}" bindtap="onF3Fix">{{f3sel.fixed ? '取消固定' : '固定'}}</button>
+        <button class="btn" bindtap="onF3Dup">复制</button>
+        <button class="btn" bindtap="onF3Rst">还原</button>
+        <button class="btn danger" bindtap="onF3Del">删除</button>
+      </view>
+      <view class="f3tip">拖滑块即时生效；密度滑块从泡沫(30)到钢(8000) kg/m³</view>
+    </view>
+
     <!-- 沙盒工具栏 -->
     <view class="tools" wx:if="{{isSandbox}}">
         <scroll-view scroll-x class="tscroll" enable-flex>
