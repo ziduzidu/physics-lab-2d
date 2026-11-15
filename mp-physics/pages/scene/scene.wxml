@@ -31,6 +31,25 @@
         <button class="btn {{showTrail ? 'on' : ''}}" bindtap="onTrail">轨迹</button>
     </view>
 
+    <!-- 三维沙盒工具栏 -->
+    <view class="tools" wx:if="{{isF3}}">
+      <scroll-view scroll-x class="tscroll" enable-flex>
+        <view class="trow">
+          <button class="btn" data-k="box" bindtap="onF3Add">＋方块</button>
+          <button class="btn" data-k="sph" bindtap="onF3Add">＋球</button>
+          <button class="btn" data-k="cyl" bindtap="onF3Add">＋圆柱</button>
+          <button class="btn" data-k="plank" bindtap="onF3Add">＋长板</button>
+          <button class="btn pri" bindtap="onF3Mat">材质·{{f3mat}}</button>
+          <button class="btn {{f3zg ? 'on' : ''}}" bindtap="onF3G">{{f3zg ? '零重力·开' : '零重力'}}</button>
+          <button class="btn" bindtap="onF3Boom">💥 爆炸</button>
+          <button class="btn" bindtap="onF3Preset">换场景</button>
+          <button class="btn" bindtap="onF3Clear">清空</button>
+          <button class="btn {{f3run ? 'on' : ''}}" bindtap="onF3Run">{{f3run ? '⏸ 暂停' : '▶ 继续'}}</button>
+          <button class="btn" bindtap="onF3Cam">视角复位</button>
+        </view>
+      </scroll-view>
+    </view>
+
     <!-- 沙盒工具栏 -->
     <view class="tools" wx:if="{{isSandbox}}">
         <scroll-view scroll-x class="tscroll" enable-flex>
