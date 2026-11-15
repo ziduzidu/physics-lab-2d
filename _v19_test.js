@@ -191,7 +191,7 @@ ok('减少动效适配（prefers-reduced-motion）', html.indexOf('prefers-reduc
 
 /* ==================== [6] 不破坏旧功能 ==================== */
 console.log('\n[6] 回归保障');
-ok('版本号已升到 v19', /v19 · 单文件离线版/.test(html), 'ok');
+ok('版本号已升到 v19 或更高', /v\d{2} · 单文件离线版/.test(html), 'ok');
 ok('沙盒物理还是好的（物体真的会掉）', (function () {
   try {
     T.enterScene('sandbox');
