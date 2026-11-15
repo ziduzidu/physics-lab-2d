@@ -146,6 +146,7 @@ Page({
         f3mat: isF3 && engine.F3MAT ? engine.F3MAT[engine.F3.mat].n : '',
         f3run: isF3 && !!engine.F3.run,
         f3zg: isF3 && !!engine.F3.zeroG,
+        f3sel: { on: false },
         brief: sc ? (sc.brief || '') : '',
         playing: !!A.playing,
         params: [],
@@ -224,6 +225,14 @@ Page({
           sbEnvTxt: engine.SB.env === 'space' ? '回地面' : '进空间',
           sbSpark: !!engine.SB.sparkMode
         });
+        return;
+      }
+      if (A.mode === 'free3d') {
+        this.setData({
+          stage: '三维自由沙盒 · ' + (engine.F3.run ? '运行中' : '已暂停'),
+          timeTxt: 't = ' + (engine.F3.simT || 0).toFixed(2) + ' s'
+        });
+        this.syncF3();
         return;
       }
       const sc = A.scene;
@@ -404,7 +413,8 @@ Page({
     try {
       const K = engine.F3MATK, M = engine.F3MAT;
       engine.F3.mat = K[(K.indexOf(engine.F3.mat) + 1) % K.length];
-      engine.f3Toast('材质：' + M[engine.F3.mat].n + '（密度 ' + M[engine.F3.mat].d + ' kg/m³）');
+      if (engine.F3.sel >= 0) engine.f3SetMat(engine.F3.sel, engine.F3.mat);  /* 选中了就换它的材质 */
+      else engine.f3Toast('材质：' + M[engine.F3.mat].n + '（密度 ' + M[engine.F3.mat].d + ' kg/m³）');
       engine.f3Bar(); engine.f3Panel();
       this.syncF3();
     } catch (e) { }
@@ -412,7 +422,7 @@ Page({
   onF3Boom() {
     try {
       const F3 = engine.F3;
-      let p = F3C_t(engine);
+      let p = engine.F3C.tgt;
       if (F3.sel >= 0 && F3.ms[F3.sel]) {
         const bp = F3.ms[F3.sel].b.position;
         p = { x: bp.x, y: bp.y, z: bp.z };
@@ -435,7 +445,7 @@ Page({
     } catch (e) { }
   },
   onF3Run() {
-    try { engine.F3.run = engine.F3.run ? 0 : 1; this.syncF3(); } catch (e) { }
+    try { engine.f3Pause(); this.syncF3(); } catch (e) { }
   },
   onF3G() {
     try {
@@ -447,11 +457,86 @@ Page({
   },
   syncF3() {
     try {
+      const F3 = engine.F3, M = engine.F3MAT;
+      let sel = { on: false };
+      const m = (F3.sel >= 0) ? F3.ms[F3.sel] : null;
+      if (m) {
+        const md = M[m.mat];
+        sel = {
+          on: true,
+          kind: m.kind === 'sph' ? '球' : m.kind === 'cyl' ? '圆柱' : m.kind === 'plank' ? '长板' : '方块',
+          mat: md.n,
+          fixed: !!m.fixed,
+          scaleV: Math.round((m.scale || 1) * 100),
+          scaleTxt: Math.round((m.scale || 1) * 100) + '%',
+          dens: (m.dens === null || m.dens === undefined) ? md.d : m.dens,
+          fr: (m.fr === null || m.fr === undefined) ? md.r : m.fr,
+          re: (m.re === null || m.re === undefined) ? md.e : m.re
+        };
+      }
       this.setData({
-        f3mat: engine.F3MAT[engine.F3.mat].n,
-        f3run: !!engine.F3.run,
-        f3zg: !!engine.F3.zeroG
+        f3mat: M[F3.mat].n,
+        f3run: !!F3.run,
+        f3zg: !!F3.zeroG,
+        f3sel: sel
       });
+    } catch (e) { }
+  },
+
+  /* ---- 选中物体的参数滑块 ---- */
+  f3Cur() { return (engine.F3.sel >= 0) ? engine.F3.ms[engine.F3.sel] : null; },
+  onF3Size(e) {
+    const m = this.f3Cur();
+    if (!m) return;
+    m.scale = (e.detail.value || 100) / 100;
+    try { engine.f3Rebuild(m); engine.f3Render(); } catch (err) { }
+    this.setData({ 'f3sel.scaleTxt': Math.round(e.detail.value) + '%' });
+  },
+  onF3SizeEnd() { this.syncF3(); },
+  onF3Dens(e) {
+    const m = this.f3Cur();
+    if (!m) return;
+    const md = engine.F3MAT[m.mat];
+    const v = e.detail.value || 0;
+    m.dens = Math.round(30 * Math.pow(8000 / 30, v / 1000));
+    try { engine.f3Rebuild(m); } catch (err) { }
+    this.setData({ 'f3sel.dens': m.dens });
+  },
+  onF3DensEnd() { this.syncF3(); },
+  onF3Fr(e) {
+    const m = this.f3Cur();
+    if (!m) return;
+    m.fr = (e.detail.value || 0) / 100;
+    try { engine.f3Contact(m); } catch (err) { }
+    this.setData({ 'f3sel.fr': m.fr });
+  },
+  onF3FrEnd() { this.syncF3(); },
+  onF3Re(e) {
+    const m = this.f3Cur();
+    if (!m) return;
+    m.re = (e.detail.value || 0) / 100;
+    try { engine.f3Contact(m); } catch (err) { }
+    this.setData({ 'f3sel.re': m.re });
+  },
+  onF3ReEnd() { this.syncF3(); },
+  onF3Fix() {
+    const m = this.f3Cur();
+    if (!m) return;
+    m.fixed = !m.fixed;
+    if (m.fixed && m.b) { m.b.velocity.set(0, 0, 0); m.b.angularVelocity.set(0, 0, 0); }
+    try { engine.f3Rebuild(m); } catch (err) { }
+    wx.showToast({ title: m.fixed ? '已固定（当墙用）' : '已解除固定', icon: 'none' });
+    this.syncF3();
+  },
+  onF3Dup() {
+    try { engine.f3Dup(engine.F3.sel); engine.f3Render(); this.syncF3(); } catch (e) { }
+  },
+  onF3Rst() {
+    try { engine.f3ResetProps(engine.F3.sel); engine.f3Render(); this.syncF3(); } catch (e) { }
+  },
+  onF3Del() {
+    try {
+      if (engine.F3.sel >= 0) { engine.f3Remove(engine.F3.sel); engine.f3Render(); this.syncF3(); }
     } catch (e) { }
   },
   onAdd(e) {
