@@ -207,7 +207,19 @@ const DEFAULT_EXPOSE = [
   'FLTS:FLTS','ORDS:ORDS','DURS:DURS','sysSelNames:sysSelNames','sysUCard:sysUCard','sysChips:sysChips',
   'VIS:VIS',
   /* v19：3A 精修 */
-  'V19:V19','sbSheen:sbSheen','sbDropShadow:sbDropShadow'
+  'V19:V19','sbSheen:sbSheen','sbDropShadow:sbDropShadow',
+  /* v20：3D 自由沙盒 */
+  'CANNON:CANNON','F3:F3','F3C:F3C','F3MAT:F3MAT','F3MATK:F3MATK','F3L:F3L','F3Q:F3Q',
+  'f3BuildWorld:f3BuildWorld','f3Make:f3Make','f3Remove:f3Remove','f3Clear:f3Clear',
+  'f3Add:f3Add','f3Enter:f3Enter','f3Leave:f3Leave','f3Render:f3Render','f3Step:f3Step',
+  'f3Frame:f3Frame','f3Panel:f3Panel','f3Bar:f3Bar','f3Bind:f3Bind','f3HookBtns:f3HookBtns',
+  'F3BTN:F3BTN','f3CamUpdate:f3CamUpdate','f3View:f3View','f3Scr:f3Scr','f3Sc:f3Sc',
+  'f3Clip:f3Clip','f3Ray:f3Ray','f3RayPlane:f3RayPlane','f3Pick:f3Pick','f3Mat:f3Mat',
+  'f3Mv:f3Mv','f3Boom:f3Boom','f3Toast:f3Toast','f3Hull:f3Hull','f3InPoly:f3InPoly',
+  'f3Default:f3Default','f3P1:f3P1','f3P2:f3P2','f3P3:f3P3','f3P4:f3P4',
+  'f3DrawGround:f3DrawGround','f3DrawShadows:f3DrawShadows','f3Collect:f3Collect',
+  'f3PaintPoly:f3PaintPoly','f3PaintSphere:f3PaintSphere','f3Seg:f3Seg',
+  'f3RGB:f3RGB','f3Mix:f3Mix','f3Len:f3Len','f3Norm:f3Norm','f3CylN:f3CylN'
 ].join(',');
 
 function runScript(file, opts) {
