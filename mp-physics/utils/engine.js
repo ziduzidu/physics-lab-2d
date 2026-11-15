@@ -24180,6 +24180,8 @@ var F3 = {
   boomFx: [],          // 冲击波圈
   hitFlash: 0,
   saved: 0,
+  psig: '',            // 侧栏面板签名（值没变就不重建 DOM，避免滑块被拽回）
+  mx: 0, my: 0,        // 最近一次指针位置（放物体时用）
   K: 'fz_f3',
   MAX: 72
 };
@@ -24362,9 +24364,95 @@ function f3Make(kind, opts){
 
   var ms = { b: body, kind:kind, hs:hs, r:r, h:hgt, mat:mat,
              col:M.col, rgb:f3RGB(M.col), fixed:!!opts.fixed,
-             note:opts.note||'' };
+             note:opts.note||'',
+             /* 基准尺寸（缩放基准）+ 可编辑参数（null = 跟随材质默认） */
+             hs0: hs? hs.slice() : null, r0: r, h0: hgt,
+             scale: 1, dens: null, fr: null, re: null };
   F3.ms.push(ms);
   return ms;
+}
+
+/* 用当前参数重建刚体（改尺寸 / 密度 / 材质 / 固定 都走这里）
+   保留位置、姿态、速度，避免重建瞬间“瞬移”或速度清零 */
+function f3Rebuild(ms){
+  if(!ms) return null;
+  var W=F3.world, old=ms.b;
+  if(!W || !old) return null;
+  var p=old.position, q=old.quaternion, lv=old.velocity, av=old.angularVelocity;
+  var px=p.x, py=p.y, pz=p.z;
+  var qx=q.x, qy=q.y, qz=q.z, qw=q.w;
+  var vx=lv.x, vy=lv.y, vz=lv.z;
+  var wx=av.x, wy=av.y, wz=av.z;
+  W.removeBody(old);
+
+  var sc   = ms.scale||1;
+  var M    = F3MAT[ms.mat]||F3MAT.wood;
+  var dens = (ms.dens===null||ms.dens===undefined)? M.d : ms.dens;
+  var shape, hs=null, r=null, hgt=null, vol;
+
+  if(ms.kind==='sph'){
+    r = ms.r0*sc;
+    shape = new CANNON.Sphere(r);
+    vol = (4/3)*Math.PI*r*r*r;
+  } else if(ms.kind==='cyl'){
+    r = ms.r0*sc; hgt = ms.h0*sc;
+    shape = new CANNON.Cylinder(r,r,hgt,14);
+    vol = Math.PI*r*r*hgt;
+  } else {
+    hs = [ms.hs0[0]*sc, ms.hs0[1]*sc, ms.hs0[2]*sc];
+    shape = new CANNON.Box(new CANNON.Vec3(hs[0],hs[1],hs[2]));
+    vol = 8*hs[0]*hs[1]*hs[2];
+  }
+  var mass = Math.max(0.02, dens*vol);
+
+  var body = new CANNON.Body({
+    mass: ms.fixed? 0 : mass,
+    shape: shape,
+    material: F3.mtl[ms.mat],
+    position: new CANNON.Vec3(px,py,pz),
+    linearDamping: 0.018, angularDamping: 0.06,
+    sleepSpeedLimit: 0.14, sleepTimeLimit: 0.55
+  });
+  body.quaternion.set(qx,qy,qz,qw);
+  body.velocity.set(vx,vy,vz);
+  body.angularVelocity.set(wx,wy,wz);
+  body.allowSleep = true;
+  W.addBody(body);
+
+  ms.b = body; ms.hs = hs; ms.r = r; ms.h = hgt; ms.mass = mass;
+  f3Contact(ms);
+  return ms;
+}
+
+/* 单物体摩擦 / 弹性覆盖：给它一个专属材质，并按需生成接触材质对。
+   注意 cannon 的 ContactMaterial 按「材质引用」配对，所以必须复用同一实例 */
+function f3Contact(ms){
+  var W=F3.world;
+  if(!W || !ms) return;
+  if(ms._cms){
+    ms._cms.forEach(function(cm){ try{ W.removeContactMaterial(cm); }catch(e){} });
+    ms._cms=null;
+  }
+  var M=F3MAT[ms.mat]||F3MAT.wood;
+  if(ms.fr===null && ms.re===null){
+    ms.b.material = F3.mtl[ms.mat];
+    return;
+  }
+  var own = ms._own || (ms._own = new CANNON.Material('own'));
+  var fr = (ms.fr===null)? M.r : ms.fr;
+  var re = (ms.re===null)? M.e : ms.re;
+  ms.b.material = own;
+  var list=[];
+  list.push(new CANNON.ContactMaterial(own, F3.mtl.ground, {
+    friction: fr*1.1, restitution: re*0.8, contactEquationStiffness:1e8
+  }));
+  F3MATK.forEach(function(k){
+    list.push(new CANNON.ContactMaterial(own, F3.mtl[k], {
+      friction: fr, restitution: re, contactEquationStiffness:1e8
+    }));
+  });
+  list.forEach(function(cm){ W.addContactMaterial(cm); });
+  ms._cms = list;
 }
 
 /* 删除 */
@@ -24372,9 +24460,11 @@ function f3Remove(i){
   if(i<0||i>=F3.ms.length) return;
   var ms = F3.ms[i];
   F3.world.removeBody(ms.b);
+  if(ms._cms){ ms._cms.forEach(function(cm){ try{ F3.world.removeContactMaterial(cm); }catch(e){} }); ms._cms=null; }
   F3.ms.splice(i,1);
   if(F3.sel===i) F3.sel=-1;
   else if(F3.sel>i) F3.sel--;
+  F3.psig='';          /* 让侧栏下一帧重建 */
 }
 
 /* ================================================================
@@ -24762,6 +24852,22 @@ function f3HUD(g,W,H){
   g.fillText('物体 '+n+'  ·  '+(F3.zeroG?'零重力':'g = 9.82')+
              '  ·  '+Math.round(F3.fps)+' fps', 12, 10);
 
+  /* 暂停标（右上角），暂停时连边框都变琥珀色，一眼能看出来 */
+  if(!F3.run){
+    var pt='⏸ 已暂停';
+    g.font='700 11.5px -apple-system,"PingFang SC",sans-serif';
+    var pw=g.measureText(pt).width;
+    var px2=W-pw-26, py2=8;
+    g.fillStyle='rgba(245,158,11,.16)';
+    g.strokeStyle='rgba(245,158,11,.55)'; g.lineWidth=1;
+    g.beginPath();
+    if(g.roundRect) g.roundRect(px2,py2,pw+18,20,10); else g.rect(px2,py2,pw+18,20);
+    g.fill(); g.stroke();
+    g.fillStyle='#fbbf24';
+    g.textAlign='left'; g.textBaseline='top';
+    g.fillText(pt, px2+9, py2+4.5);
+  }
+
   /* 选中物体的浮标 */
   if(F3.sel>=0 && F3.sel<F3.ms.length){
     var m=F3.ms[F3.sel], p=m.b.position;
@@ -24854,6 +24960,16 @@ function f3Frame(){
     var df=now-F3.lastT;
     if(df>0) F3.fps=F3.fps*0.9+(1000/df)*0.1;
     if(F3.run) f3Step(Math.min(0.05, df/1000)*F3.speed);
+  }
+  /* 暂停时拖拽 = 纯摆位：直接跟到目标点，速度清零，松手就停在那儿 */
+  if(!F3.run && F3.drag && F3.ms[F3.drag.i]){
+    var dm=F3.ms[F3.drag.i], db=dm.b, dt=F3.drag.tgt;
+    db.position.x += (dt.x-db.position.x)*0.4;
+    db.position.y += (dt.y-db.position.y)*0.4;
+    db.position.z += (dt.z-db.position.z)*0.4;
+    db.velocity.set(0,0,0);
+    db.angularVelocity.set(0,0,0);
+    db.wakeUp();
   }
   F3.lastT=now;
   var tt=$('#timeTag');
@@ -24961,6 +25077,11 @@ function f3Bind(){
       if(g2) F3.drag.offset={x:bp.x-g2.x, y:bp.y-g2.y, z:bp.z-g2.z};
       m.b.wakeUp();
       try{ SND.play('sel'); }catch(err){}
+      if(F3._selPrev!==hit.i){
+        F3._selPrev=hit.i;
+        f3Toast('已选中 · 侧栏可调尺寸/密度/摩擦/弹性');
+      }
+      F3.psig='';
       f3Panel();
     } else {
       F3.drag=null;
@@ -25029,6 +25150,24 @@ function f3Bind(){
     F3C.dist = f3Clamp(F3C.dist*(1+Math.sign(e.deltaY)*0.08), 4.5, 44);
     e.preventDefault();
   }, {passive:false});
+
+  /* 键盘：空格暂停/继续，回车单步，Delete 删除选中 */
+  if(!F3.__kb){
+    F3.__kb=1;
+    window.addEventListener('keydown', function(e){
+      if(App.mode!=='free3d') return;
+      var t=e.target, tag=t&&t.tagName;
+      if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable)) return;
+      if(e.key===' '){ e.preventDefault(); f3Pause(); }
+      else if(e.key==='Delete'||e.key==='Backspace'){
+        if(F3.sel>=0){ e.preventDefault(); f3Remove(F3.sel); f3Toast('已删除'); f3Panel(); }
+      }
+      else if(e.key==='Enter'){
+        e.preventDefault(); F3.run=0;
+        f3Step(1/60); f3Render(); f3Panel(); f3Bar();
+      }
+    });
+  }
 }
 
 /* 屏幕点 → 过 (ox,oy,oz) 的相机平行平面交点 */
@@ -25138,6 +25277,16 @@ function f3Default(){
    9. UI：工具条 + 侧栏
    ================================================================ */
 var F3PRESET=0;
+
+/* 暂停 / 继续。暂停时物理不积分，但仍可转视角、点选、拖动摆位、调参数 */
+function f3Pause(v){
+  F3.run = (v===undefined) ? (F3.run?0:1) : (v?1:0);
+  var bp=$('#bPlay');
+  if(bp) bp.textContent = F3.run?'⏸ 暂停':'▶ 播放';
+  f3Toast(F3.run?'继续模拟':'已暂停 · 仍可拖动物体、调参数');
+  f3Bar(); f3Panel();
+}
+
 function f3Bar(){
   var box=$('#mobBar');
   if(!box) return;
@@ -25183,9 +25332,10 @@ function f3Bar(){
       [f3Default,f3P1,f3P2,f3P3,f3P4][F3PRESET]();
     }],
     ['清空', function(){ f3Clear(); f3Toast('已清空'); }],
-    [F3.run?'暂停':'继续', function(){
-      F3.run=F3.run?0:1;
-      f3Bar();
+    [F3.run?'⏸ 暂停':'▶ 继续', function(){ f3Pause(); }, F3.run?'':'pri'],
+    ['单步', function(){
+      F3.run=0; f3Step(1/60); f3Render(); f3Panel(); f3Bar();
+      f3Toast('单步 1/60 s');
     }],
     ['视角', function(){
       F3C.tYaw=-0.82; F3C.tPitch=0.40; F3C.tDist=16.5;
@@ -25203,72 +25353,201 @@ function f3Bar(){
   });
 }
 
-function f3Panel(){
-  /* 参数区：材质色板 + 说明 */
+/* ---------- 侧栏参数（材质板 + 选中物体调节） ---------- */
+var F3D0=30, F3D1=8000;          /* 密度滑块区间 kg/m³ */
+function f3DensToV(d){ return Math.round(1000*Math.log(Math.max(F3D0,d)/F3D0)/Math.log(F3D1/F3D0)); }
+function f3VToDens(v){ return Math.round(F3D0*Math.pow(F3D1/F3D0, v/1000)); }
+
+/* 面板签名：内容不变就不重建 DOM —— 否则拖动滑块时元素被销毁，手指会“掉” */
+function f3Sig(){
+  var m=(F3.sel>=0)?F3.ms[F3.sel]:null;
+  if(!m) return 'none|'+F3.mat+'|'+F3.ms.length;
+  return [F3.sel,m.kind,m.mat,m.fixed?1:0,(m.scale||1).toFixed(2),
+          m.dens===null?'-':Math.round(m.dens),
+          m.fr===null?'-':m.fr.toFixed(2),
+          m.re===null?'-':m.re.toFixed(2)].join('|');
+}
+
+/* 改材质（只对选中的物体） */
+function f3SetMat(i,k){
+  var ms=F3.ms[i];
+  if(!ms || !F3MAT[k]) return;
+  ms.mat=k; ms.col=F3MAT[k].col; ms.rgb=f3RGB(F3MAT[k].col);
+  f3Rebuild(ms);
+}
+
+/* 复制一个（保留材质与自定义参数） */
+function f3Dup(i){
+  var ms=F3.ms[i];
+  if(!ms) return null;
+  if(F3.ms.length>=F3.MAX){ f3Toast('物体太多啦，先清一清'); return null; }
+  var p=ms.b.position;
+  var o=f3Make(ms.kind,{ x:p.x+0.95, y:p.y+0.45, z:p.z+0.35, mat:ms.mat,
+                         r:ms.r0, h:ms.h0,
+                         hs:ms.hs0?[ms.hs0[0],ms.hs0[1],ms.hs0[2]]:undefined,
+                         fixed:ms.fixed });
+  o.scale=ms.scale; o.dens=ms.dens; o.fr=ms.fr; o.re=ms.re;
+  f3Rebuild(o);
+  F3.sel=F3.ms.length-1;
+  f3Toast('已复制一个');
+  return o;
+}
+
+/* 参数还原成材质默认 */
+function f3ResetProps(i){
+  var ms=F3.ms[i];
+  if(!ms) return;
+  ms.scale=1; ms.dens=null; ms.fr=null; ms.re=null;
+  f3Rebuild(ms);
+  f3Toast('参数已还原');
+}
+
+function f3Params(){
   var ps=$('#params');
-  if(ps && App.mode==='free3d'){
-    var html='';
-    html+='<div class="f3mats">';
-    F3MATK.forEach(function(k){
-      var M=F3MAT[k];
-      html+='<button class="f3m'+(k===F3.mat?' on':'')+'" data-m="'+k+'" '+
-            'style="--mc:'+M.col+'" title="'+M.n+' · '+M.d+' kg/m³">'+
-            '<i></i><b>'+M.n+'</b></button>';
-    });
-    html+='</div>';
-    html+='<div class="f3kv"><span>选中材质</span><b>'+F3MAT[F3.mat].n+'</b></div>';
-    html+='<div class="f3kv"><span>密度</span><b>'+F3MAT[F3.mat].d+' kg/m³</b></div>';
-    html+='<div class="f3kv"><span>摩擦系数</span><b>'+F3MAT[F3.mat].r.toFixed(2)+'</b></div>';
-    html+='<div class="f3kv"><span>恢复系数</span><b>'+F3MAT[F3.mat].e.toFixed(2)+'</b></div>';
-    html+='<div class="f3tip">按住物体往任意方向拖，松手就带着速度飞出去。点「💥 爆炸」把周围全部掀翻。</div>';
-    ps.innerHTML=html;
-    var btns=ps.querySelectorAll('.f3m');
-    for(var i=0;i<btns.length;i++){
-      btns[i].onclick=function(){
-        F3.mat=this.getAttribute('data-m');
-        try{ SND.play(F3MAT[F3.mat].snd||'tap'); }catch(e){}
-        f3Bar(); f3Panel();
-      };
-    }
+  if(!ps || App.mode!=='free3d') return;
+  F3.psig=f3Sig();
+
+  var html='<div class="f3mats">';
+  F3MATK.forEach(function(k){
+    var M=F3MAT[k];
+    html+='<button class="f3m'+(k===F3.mat?' on':'')+'" data-m="'+k+'" '+
+          'style="--mc:'+M.col+'" title="'+M.n+' · '+M.d+' kg/m³">'+
+          '<i></i><b>'+M.n+'</b></button>';
+  });
+  html+='</div>';
+
+  var m=(F3.sel>=0)?F3.ms[F3.sel]:null;
+  if(m){
+    var M=F3MAT[m.mat];
+    var dens=(m.dens===null)?M.d:m.dens;
+    var fr=(m.fr===null)?M.r:m.fr;
+    var re=(m.re===null)?M.e:m.re;
+    var kn=(m.kind==='sph'?'球':m.kind==='cyl'?'圆柱':m.kind==='plank'?'长板':'方块');
+    html+='<div class="f3sep"></div>';
+    html+='<div class="f3selh" style="--mc:'+M.col+'"><i></i>选中 '+kn+' · '+M.n+
+          (m.fixed?' <em>固定</em>':'')+'</div>';
+    html+='<div class="f3row"><span>尺寸</span><input id="f3sSize" type="range" min="50" max="220" step="5" value="'+
+          Math.round((m.scale||1)*100)+'"><b id="f3vSize">'+Math.round((m.scale||1)*100)+'%</b></div>';
+    html+='<div class="f3row"><span>密度</span><input id="f3sDen" type="range" min="0" max="1000" step="5" value="'+
+          f3DensToV(dens)+'"><b id="f3vDen">'+dens+'</b></div>';
+    html+='<div class="f3row"><span>摩擦</span><input id="f3sFr" type="range" min="0" max="120" step="2" value="'+
+          Math.round(fr*100)+'"><b id="f3vFr">'+fr.toFixed(2)+'</b></div>';
+    html+='<div class="f3row"><span>弹性</span><input id="f3sRe" type="range" min="0" max="98" step="2" value="'+
+          Math.round(re*100)+'"><b id="f3vRe">'+re.toFixed(2)+'</b></div>';
+    html+='<div class="f3acts">'+
+          '<button id="f3bFix" class="'+(m.fixed?'on':'')+'">'+(m.fixed?'取消固定':'固定')+'</button>'+
+          '<button id="f3bDup">复制</button>'+
+          '<button id="f3bRst">还原</button>'+
+          '<button id="f3bDel" class="danger">删除</button></div>';
+    html+='<div class="f3tip">滑块<b>即时生效</b>。「固定」=质量无穷大（当墙用），「还原」只清参数不动位置。也可以直接换上面的材质。</div>';
+  } else {
+    html+='<div class="f3kv"><span>材料摩擦 / 弹性</span><b>'+
+          F3MAT[F3.mat].r.toFixed(2)+' / '+F3MAT[F3.mat].e.toFixed(2)+'</b></div>';
+    html+='<div class="f3tip">按住物体可以搬动；<b>点一下物体</b>就能在这里调它的尺寸、密度、摩擦和弹性。点「💥 爆炸」把周围全部掀翻。</div>';
   }
+  ps.innerHTML=html;
+
+  /* 材质板：选中了物体就换它的材质，否则只设“下一个物体”的默认材质 */
+  var btns=ps.querySelectorAll('.f3m');
+  for(var i=0;i<btns.length;i++){
+    btns[i].onclick=function(){
+      var k=this.getAttribute('data-m');
+      F3.mat=k;
+      if(F3.sel>=0) f3SetMat(F3.sel,k);
+      try{ SND.play(F3MAT[k].snd||'tap'); }catch(e){}
+      f3Bar(); f3Panel();
+    };
+  }
+
+  /* 滑块：input 时应用 + 同步签名，避免被下一次 f3Panel 重建 */
+  function hook(id, vId, apply){
+    var el=ps.querySelector('#'+id), lb=ps.querySelector('#'+vId);
+    if(!el || !lb) return;
+    el.addEventListener('input', function(){
+      var t=apply(parseFloat(this.value)||0);
+      if(t!==undefined && t!==null) lb.textContent=t;
+      F3.psig=f3Sig();
+    });
+  }
+  if(m){
+    hook('f3sSize','f3vSize', function(v){
+      var mm=F3.ms[F3.sel]; if(!mm) return null;
+      mm.scale=v/100; f3Rebuild(mm); return Math.round(v)+'%';
+    });
+    hook('f3sDen','f3vDen', function(v){
+      var mm=F3.ms[F3.sel]; if(!mm) return null;
+      mm.dens=f3VToDens(v); f3Rebuild(mm); return String(mm.dens);
+    });
+    hook('f3sFr','f3vFr', function(v){
+      var mm=F3.ms[F3.sel]; if(!mm) return null;
+      mm.fr=v/100; f3Contact(mm); return mm.fr.toFixed(2);
+    });
+    hook('f3sRe','f3vRe', function(v){
+      var mm=F3.ms[F3.sel]; if(!mm) return null;
+      mm.re=v/100; f3Contact(mm); return mm.re.toFixed(2);
+    });
+
+    var bf=ps.querySelector('#f3bFix');
+    if(bf) bf.onclick=function(){
+      var mm=F3.ms[F3.sel]; if(!mm) return;
+      mm.fixed=!mm.fixed;
+      if(mm.fixed){ mm.b.velocity.set(0,0,0); mm.b.angularVelocity.set(0,0,0); }
+      f3Rebuild(mm);
+      f3Toast(mm.fixed?'已固定（当墙用）':'已解除固定');
+      f3Panel();
+    };
+    var bd=ps.querySelector('#f3bDup');
+    if(bd) bd.onclick=function(){ f3Dup(F3.sel); f3Panel(); };
+    var br=ps.querySelector('#f3bRst');
+    if(br) br.onclick=function(){ f3ResetProps(F3.sel); f3Panel(); };
+    var bx=ps.querySelector('#f3bDel');
+    if(bx) bx.onclick=function(){
+      if(F3.sel>=0){ f3Remove(F3.sel); f3Toast('已删除'); f3Panel(); }
+    };
+  }
+}
+
+function f3Panel(){
+  if(App.mode!=='free3d') return;
+  /* 选择或参数变了才重建参数区 */
+  if(f3Sig()!==F3.psig) f3Params();
 
   /* 实时数据 */
   var ro=$('#readout');
-  if(ro && App.mode==='free3d'){
-    var rows='';
-    var m=(F3.sel>=0)?F3.ms[F3.sel]:null;
-    if(m){
-      var b=m.b, p=b.position, v=b.velocity, w=b.angularVelocity;
-      var sp=f3Len(v.x,v.y,v.z), wp=f3Len(w.x,w.y,w.z);
-      var ke=0.5*b.mass*(v.x*v.x+v.y*v.y+v.z*v.z);
-      rows+='<tr><td>物体</td><td>'+(m.kind==='sph'?'球':m.kind==='cyl'?'圆柱':m.kind==='plank'?'长板':'方块')+
-            ' · '+F3MAT[m.mat].n+'</td></tr>';
-      rows+='<tr><td>质量 m</td><td>'+b.mass.toFixed(2)+' kg</td></tr>';
-      rows+='<tr><td>位置 (x,y,z)</td><td>'+p.x.toFixed(2)+', '+p.y.toFixed(2)+', '+p.z.toFixed(2)+' m</td></tr>';
-      rows+='<tr><td>速度 v</td><td>'+sp.toFixed(2)+' m/s</td></tr>';
-      rows+='<tr><td>角速度 ω</td><td>'+wp.toFixed(2)+' rad/s</td></tr>';
-      rows+='<tr><td>动能 Ek</td><td>'+ke.toFixed(1)+' J</td></tr>';
-      rows+='<tr><td>状态</td><td>'+(b.sleepState===2?'静止（休眠）':'运动中')+'</td></tr>';
-    } else {
-      rows+='<tr><td>提示</td><td>点一个物体看它的实时数据</td></tr>';
-    }
-    rows+='<tr><td>物体数</td><td>'+F3.ms.length+' / '+F3.MAX+'</td></tr>';
-    rows+='<tr><td>重力</td><td>'+(F3.zeroG?'0（零重力）':'9.82 m/s²')+'</td></tr>';
-    rows+='<tr><td>帧率</td><td>'+Math.round(F3.fps)+' fps</td></tr>';
-    ro.innerHTML=rows;
+  if(!ro) return;
+  var rows='';
+  var m=(F3.sel>=0)?F3.ms[F3.sel]:null;
+  if(m){
+    var b=m.b, p=b.position, v=b.velocity, w=b.angularVelocity;
+    var sp=f3Len(v.x,v.y,v.z), wp=f3Len(w.x,w.y,w.z);
+    var ke=0.5*b.mass*(v.x*v.x+v.y*v.y+v.z*v.z);
+    var kn=(m.kind==='sph'?'球':m.kind==='cyl'?'圆柱':m.kind==='plank'?'长板':'方块');
+    rows+='<tr><td>物体</td><td>'+kn+' · '+F3MAT[m.mat].n+'</td></tr>';
+    rows+='<tr><td>质量 m</td><td>'+b.mass.toFixed(2)+' kg'+(m.fixed?'（固定）':'')+'</td></tr>';
+    rows+='<tr><td>尺寸</td><td>'+Math.round((m.scale||1)*100)+' %</td></tr>';
+    rows+='<tr><td>摩擦 / 弹性</td><td>'+((m.fr===null?F3MAT[m.mat].r:m.fr).toFixed(2))+' / '+
+          ((m.re===null?F3MAT[m.mat].e:m.re).toFixed(2))+'</td></tr>';
+    rows+='<tr><td>位置 (x,y,z)</td><td>'+p.x.toFixed(2)+', '+p.y.toFixed(2)+', '+p.z.toFixed(2)+' m</td></tr>';
+    rows+='<tr><td>速度 v</td><td>'+sp.toFixed(2)+' m/s</td></tr>';
+    rows+='<tr><td>角速度 ω</td><td>'+wp.toFixed(2)+' rad/s</td></tr>';
+    rows+='<tr><td>动能 Ek</td><td>'+ke.toFixed(1)+' J</td></tr>';
+    rows+='<tr><td>状态</td><td>'+(F3.run? (b.sleepState===2?'静止（休眠）':'运动中') : '已暂停')+'</td></tr>';
+  } else {
+    rows+='<tr><td>提示</td><td>点一个物体，左侧就能调参数</td></tr>';
   }
+  rows+='<tr><td>物体数</td><td>'+F3.ms.length+' / '+F3.MAX+'</td></tr>';
+  rows+='<tr><td>重力</td><td>'+(F3.zeroG?'0（零重力）':'9.82 m/s²')+'</td></tr>';
+  rows+='<tr><td>仿真时间</td><td>'+F3.simT.toFixed(2)+' s'+(F3.run?'':'（暂停）')+'</td></tr>';
+  rows+='<tr><td>帧率</td><td>'+Math.round(F3.fps)+' fps</td></tr>';
+  ro.innerHTML=rows;
 }
 
 /* ================================================================
    10. 按钮接管（只在 free3d 模式生效，不干扰其它模块）
    ================================================================ */
 var F3BTN = {
-  bPlay: function(){
-    F3.run = F3.run?0:1;
-    $('#bPlay').textContent = F3.run?'⏸ 暂停':'▶ 播放';
-    f3Bar();
-  },
-  bStep: function(){ f3Step(1/60); f3Render(); f3Panel(); },
+  bPlay: function(){ f3Pause(); },
+  bStep: function(){ F3.run=0; f3Step(1/60); f3Render(); f3Panel(); f3Bar(); },
   bReset: function(){ F3PRESET=0; f3Default(); f3Toast('已重置'); },
   bEnd: function(){ f3Clear(); f3Toast('已清空'); }
 };
@@ -25302,13 +25581,21 @@ function f3HookBtns(){
    ================================================================ */
 function f3Enter(){
   App.playing=false;
+  /* 2D 场景的底部栏元素（矢量/轨迹/导出CSV）在 3D 里没有意义，先收起来 */
+  F3._hid=[];
+  ['#ckVec','#ckTrail'].forEach(function(sel){
+    var el=$(sel);
+    if(el && el.parentNode){ F3._hid.push([el.parentNode, el.parentNode.style.display]); el.parentNode.style.display='none'; }
+  });
+  var csv=$('#bCsv');
+  if(csv){ F3._hid.push([csv, csv.style.display]); csv.style.display='none'; }
   $('#bPlay').textContent='⏸ 暂停';
   $('#bEnd').textContent='清空物体';
   $('#timeline').style.display='none';
   $('#charts').style.display='none';
   $('#stageTag').textContent='三维自由沙盒';
   var pn=$('#pname'); if(pn) pn.textContent='三维沙盒';
-  var bf=$('#brief'); if(bf) bf.textContent='三维刚体沙盒：cannon-es 物理引擎 + 自研 Canvas 软件渲染。拖动空白转视角，双指缩放，按住物体直接拖，松手带着惯性飞出去。';
+  var bf=$('#brief'); if(bf) bf.textContent='三维刚体沙盒：cannon-es 物理引擎 + 自研 Canvas 软件渲染。拖动空白转视角，双指缩放，按住物体直接拖。点一下物体可在侧栏调尺寸/密度/摩擦/弹性；「暂停」后还能一边停着一边摆位。';
   var ex=$('#examples');
   if(ex) ex.innerHTML='<div class="f3tip">3D 沙盒没有固定例题——<b>你自己搭的场景就是题</b>。试试：<br>① 搭一座六层彩塔然后「💥 爆炸」，看它怎么散架；<br>② 多米诺骨牌的间距对连锁速度有什么影响；<br>③ 冰球、钢球、橡胶球从长板斜坡滚下，谁滚得远？为什么？</div>';
 
@@ -25324,11 +25611,14 @@ function f3Enter(){
     F3.hintT=7;
   }
   F3.lastT=0;
+  F3.psig='';                 /* 强制重建侧栏参数区 */
+  var bp=$('#bPlay'); if(bp) bp.textContent = F3.run?'⏸ 暂停':'▶ 播放';
   f3Bar(); f3Panel(); f3Render();
 }
 
 function f3Leave(){
   F3.drag=null; F3.orbit=null;
+  if(F3._hid){ F3._hid.forEach(function(e){ e[0].style.display=e[1]; }); F3._hid=null; }
   $('#charts').style.display='';
   $('#timeline').style.display='';
   $('#bEnd').textContent='运行到底';
@@ -25451,7 +25741,13 @@ __env.__engine = {
   f3P4: (typeof f3P4 !== 'undefined' ? f3P4 : null),
   f3Boom: (typeof f3Boom !== 'undefined' ? f3Boom : null),
   f3Toast: (typeof f3Toast !== 'undefined' ? f3Toast : null),
-  f3Step: (typeof f3Step !== 'undefined' ? f3Step : null)
+  f3Step: (typeof f3Step !== 'undefined' ? f3Step : null),
+  f3Pause: (typeof f3Pause !== 'undefined' ? f3Pause : null),
+  f3Rebuild: (typeof f3Rebuild !== 'undefined' ? f3Rebuild : null),
+  f3Contact: (typeof f3Contact !== 'undefined' ? f3Contact : null),
+  f3SetMat: (typeof f3SetMat !== 'undefined' ? f3SetMat : null),
+  f3Dup: (typeof f3Dup !== 'undefined' ? f3Dup : null),
+  f3ResetProps: (typeof f3ResetProps !== 'undefined' ? f3ResetProps : null)
 };
 module.exports = __env.__engine;
 
