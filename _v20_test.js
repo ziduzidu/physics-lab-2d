@@ -23,7 +23,7 @@ ok('页面零外部资源引用（完全离线）',
   !/(?:src|href)\s*=\s*["'](?:https?:)?\/\//.test(html), 'has external ref');
 ok('CANNON 来源与协议在注释里注明',
   html.indexOf('pmndrs/cannon-es') > 0 && html.indexOf('MIT License') > 0, 'no credit');
-ok('版本号已到 v20', /v20 · 单文件离线版/.test(html), 'ok');
+ok('版本号已到 v20.x', /v20(\.\d)? · 单文件离线版/.test(html), 'ok');
 ok('模块数 = 10 且含 free3d',
   MODULES.length === 10 && MODULES.some(m => m.id === 'free3d'), MODULES.length);
 ok('free3d 卡片文案完整',
@@ -352,6 +352,134 @@ console.log('\n[9] 性能');
   ok('6 个物体跑 60 帧 + 渲染，平均每帧 < 18 ms（软件渲染可接受）',
     ms / 60 < 18, (ms / 60).toFixed(1) + ' ms/帧');
   console.log('    （60 帧共 ' + ms + ' ms，含物理与光栅化）');
+})();
+
+/* ==================== [10] 暂停 + 点击物体调参数 ==================== */
+console.log('\n[10] 暂停与物体参数');
+(function () {
+  T.loadScene('free3d');
+  T.f3Default();
+  const ps = st.sandbox.document.querySelector('#params');
+
+  /* --- 暂停 --- */
+  T.f3Pause(0);
+  ok('暂停按钮把仿真停住', F3.run === 0, F3.run);
+  ok('底部播放键文案同步成「▶ 播放」',
+    st.sandbox.document.querySelector('#bPlay').textContent.indexOf('播放') >= 0,
+    st.sandbox.document.querySelector('#bPlay').textContent);
+  const t0 = F3.simT;
+  T.f3Frame(); T.f3Frame();
+  ok('暂停时主循环不推进仿真时间', Math.abs(F3.simT - t0) < 1e-9, F3.simT + ' vs ' + t0);
+
+  /* 暂停时拖动 = 纯摆位 */
+  const mm = F3.ms[0];
+  F3.drag = { i: 0, tgt: { x: mm.b.position.x + 2, y: mm.b.position.y + 1, z: mm.b.position.z }, offset: null };
+  for (let i = 0; i < 20; i++) T.f3Frame();
+  ok('暂停时拖动能直接摆放物体（不靠物理积分）',
+    mm.b.position.x > 0.5 && Math.abs(mm.b.velocity.x) < 1e-6,
+    'x=' + mm.b.position.x.toFixed(2) + ' vx=' + mm.b.velocity.x);
+  F3.drag = null;
+
+  T.f3Pause(1);
+  ok('再按一次恢复运行', F3.run === 1, F3.run);
+
+  /* --- 点选 → 面板出现滑块 --- */
+  F3.sel = 0; F3.psig = '';
+  T.f3Panel();
+  const h = ps.innerHTML;
+  ok('选中物体后参数区出现 4 个滑块',
+    h.indexOf('f3sSize') > 0 && h.indexOf('f3sDen') > 0 &&
+    h.indexOf('f3sFr') > 0 && h.indexOf('f3sRe') > 0, 'sliders missing');
+  ok('参数区还有 固定/复制/还原/删除 四个动作',
+    h.indexOf('f3bFix') > 0 && h.indexOf('f3bDup') > 0 &&
+    h.indexOf('f3bRst') > 0 && h.indexOf('f3bDel') > 0, 'actions missing');
+  ok('未选中时不给滑块、只给提示',
+    (function () { F3.sel = -1; F3.psig = ''; T.f3Panel(); return ps.innerHTML.indexOf('f3sSize') < 0; })(),
+    'still has slider');
+  F3.sel = 0; F3.psig = '';
+
+  /* --- 尺寸 --- */
+  const a = F3.ms[0];
+  const m1 = a.b.mass, y1 = a.b.position.y;
+  a.scale = 2; T.f3Rebuild(a);
+  ok('尺寸 ×2 → 质量 ×8（体积随立方增长）',
+    Math.abs(a.b.mass / m1 - 8) < 0.02, (a.b.mass / m1).toFixed(3));
+  ok('重建不改变位置（不会瞬移）', Math.abs(a.b.position.y - y1) < 1e-6, a.b.position.y);
+  a.scale = 1; T.f3Rebuild(a);
+  ok('尺寸还原后质量回到原值', Math.abs(a.b.mass - m1) < 1e-6, a.b.mass);
+
+  /* --- 密度 --- */
+  const vol = 8 * 0.55 * 0.55 * 0.55;
+  a.dens = 2000; T.f3Rebuild(a);
+  ok('密度 2000 → 质量 = 2000×体积', Math.abs(a.b.mass - 2000 * vol) < 1, a.b.mass.toFixed(1));
+  a.dens = null; T.f3Rebuild(a);
+
+  /* --- 摩擦 / 弹性：接触材质真的换了 --- */
+  a.fr = 0.05; a.re = 0.85; T.f3Contact(a);
+  const cm = F3.world.getContactMaterial(a.b.material, F3.mtl.ground);
+  ok('摩擦覆盖后物体用专属材质，且地面配对的摩擦 = 0.05×1.1',
+    a.b.material && a.b.material.name === 'own' && cm && Math.abs(cm.friction - 0.055) < 1e-6,
+    cm ? cm.friction : 'no pair');
+  a.fr = null; a.re = null; T.f3Contact(a);
+  ok('清掉覆盖后回到材质默认、接触对数量回落',
+    a.b.material === F3.mtl.wood, a.b.material && a.b.material.name);
+
+  /* --- 弹性：弹跳高度真的有区别 --- */
+  function apex(re) {
+    T.f3BuildWorld();
+    const s2 = T.f3Make('sph', { x: 0, y: 3, z: 0, r: 0.5, mat: 'wood' });
+    s2.re = re; s2.fr = 0.3; T.f3Contact(s2);
+    let hit = false, hi = 0;
+    for (let i = 0; i < 180; i++) {
+      T.f3Step(1 / 60);
+      const y = s2.b.position.y;
+      if (y < 0.56) hit = true;
+      if (hit && y > hi) hi = y;
+    }
+    return hi;
+  }
+  const lowB = apex(0.05), highB = apex(0.9);
+  ok('弹性 0.05 基本不反弹、0.9 明显弹起',
+    lowB < 0.62 && highB > 1.5, lowB.toFixed(2) + ' / ' + highB.toFixed(2));
+
+  /* --- 固定 --- */
+  T.f3BuildWorld();
+  const fx = T.f3Make('box', { x: 0, y: 4, z: 0, mat: 'wood' });
+  fx.fixed = true; T.f3Rebuild(fx);
+  for (let i = 0; i < 120; i++) T.f3Step(1 / 60);
+  ok('固定后质量 = 0 且悬空不掉（当墙用）',
+    fx.b.mass === 0 && Math.abs(fx.b.position.y - 4) < 0.05, fx.b.position.y.toFixed(2));
+
+  /* --- 复制 / 还原 --- */
+  T.loadScene('free3d'); T.f3Default();
+  const src = F3.ms[0];
+  src.scale = 1.4; src.dens = 900; src.fr = 0.7; T.f3Rebuild(src);
+  const n0 = F3.ms.length;
+  T.f3Dup(0);
+  const cp = F3.ms[F3.ms.length - 1];
+  ok('复制出的物体继承材质和自定义参数',
+    F3.ms.length === n0 + 1 && cp.mat === src.mat && cp.scale === 1.4 &&
+    cp.dens === 900 && cp.fr === 0.7, cp.scale + '/' + cp.dens + '/' + cp.fr);
+  T.f3ResetProps(0);
+  ok('「还原」把参数清回材质默认',
+    src.scale === 1 && src.dens === null && src.fr === null && src.re === null,
+    src.scale + '/' + src.dens);
+  ok('还原后质量回到材质理论值',
+    Math.abs(src.b.mass - 520 * 8 * 0.55 ** 3) / src.b.mass < 0.02, src.b.mass.toFixed(1));
+
+  /* --- UI 入口 --- */
+  T.f3Bar();
+  const bar = st.sandbox.document.querySelector('#mobBar');
+  const labels = (bar.children || []).map(c => c.textContent).join('|');
+  ok('工具条有「暂停/继续」和「单步」', /暂停|继续/.test(labels) && labels.indexOf('单步') >= 0, labels);
+  ok('空格键绑定了暂停', /e\.key===' '\)\{ e\.preventDefault\(\); f3Pause\(\)/.test(html), 'no keybind');
+  ok('画布上有暂停标', html.indexOf('⏸ 已暂停') > 0, 'no badge');
+  ok('暂停时读数表标「已暂停」', (function () {
+    F3.run = 0; T.f3Panel();
+    const ro = st.sandbox.document.querySelector('#readout').innerHTML;
+    F3.run = 1;
+    return ro.indexOf('已暂停') >= 0;
+  })(), 'no pause in readout');
 })();
 
 /* ==================== 汇总 ==================== */
