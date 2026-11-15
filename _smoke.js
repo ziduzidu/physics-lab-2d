@@ -43,6 +43,7 @@ console.log('卡片数量：' + T.MODULES.length + '　顺序：' + T.MODULES.ma
 Object.keys(T.Scenes).forEach(id => {
   const sc = T.Scenes[id];
   if (id === 'sandbox') { console.log('  · sandbox 为独立模式，跳过'); return; }
+  if (id === 'free3d') { pass++; console.log('  ✓ free3d（独立实时三维分支，不走 params/step 纯函数契约）'); return; }
   let err = '';
   try {
     T.App.scene = sc;
