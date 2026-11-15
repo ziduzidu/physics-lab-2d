@@ -241,3 +241,17 @@
     line-height: 1.7;
     white-space: pre-line;
 }
+
+/* ---- v20.1 选中物体参数调节 ---- */
+.f3sel{background:#fff;border-radius:14rpx;padding:20rpx 22rpx;margin:16rpx 0}
+.f3selh{font-size:26rpx;font-weight:700;color:#0f172a;margin-bottom:14rpx}
+.f3row{display:flex;align-items:center;gap:14rpx;margin:14rpx 0}
+.f3k{flex:0 0 64rpx;font-size:24rpx;color:#64748b}
+.f3sl{flex:1}
+.f3v{flex:0 0 96rpx;text-align:right;font-size:24rpx;font-weight:700;color:#0f172a}
+.f3acts{display:flex;gap:12rpx;margin-top:16rpx}
+.f3acts .btn{flex:1;margin:0;font-size:24rpx}
+.f3acts .danger{color:#b91c1c;border-color:rgba(248,113,113,.6)}
+.f3tip{margin-top:14rpx;font-size:22rpx;line-height:1.6;color:#334155;
+  background:rgba(56,189,248,.08);border-left:4rpx solid rgba(56,189,248,.5);
+  border-radius:10rpx;padding:12rpx 16rpx}
