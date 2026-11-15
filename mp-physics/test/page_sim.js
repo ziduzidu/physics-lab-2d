@@ -110,7 +110,7 @@ const ROOT = path.join(__dirname, '..');
   console.log('\n[1] 首页');
   const home = loadPage(path.join(ROOT, 'pages/index/index.js'), 'pages/index/index');
   home.onLoad();
-  ok('首页列出 9 个模块', home.data.modules.length === 9, home.data.modules.length);
+  ok('首页列出 10 个模块', home.data.modules.length === 10, home.data.modules.length);
   ok('模块有名称与简介', home.data.modules.every(m => m.name && m.desc), '');
   ok('统计了例题总数', home.data.totalExamples > 10, home.data.totalExamples);
   home.openModule({ currentTarget: { dataset: { id: 'kinema' } } });
