@@ -1,0 +1,123 @@
+<view class="wrap">
+    <!-- 画布 -->
+    <view class="stage">
+        <canvas type="2d" id="scene" class="cv" style="width:{{cvW}}px;height:{{cvH}}px"
+            disable-scroll="true" bindtouchstart="onTS" bindtouchmove="onTM" bindtouchend="onTE"
+            bindtouchcancel="onTE"></canvas>
+        <view class="sbar">
+            <text class="stag">{{stage}}</text>
+            <text class="stime">{{timeTxt}}</text>
+        </view>
+    </view>
+
+    <view class="empty" wx:if="{{err}}">{{err}}</view>
+
+    <!-- 图表：v-t / a-t -->
+    <view class="charts" wx:if="{{hasCharts}}">
+        <canvas type="2d" id="chV" class="chcv" style="width:{{cvW}}px;height:{{chH}}px"></canvas>
+        <canvas type="2d" id="chE" class="chcv" style="width:{{cvW}}px;height:{{chH}}px"></canvas>
+    </view>
+
+    <!-- 播放控制 -->
+    <view class="ctrl" wx:if="{{!isSandbox}}">
+        <button class="btn pri" bindtap="onPlay">{{playing ? '⏸ 暂停' : '▶ 播放'}}</button>
+        <button class="btn" bindtap="onStep">单步</button>
+        <button class="btn" bindtap="onReset">重置</button>
+        <button class="btn" bindtap="onEnd">到底</button>
+        <picker range="{{speeds}}" value="{{speedIdx}}" bindchange="onSpeed">
+            <view class="btn">{{speeds[speedIdx]}}</view>
+        </picker>
+        <button class="btn {{showVec ? 'on' : ''}}" bindtap="onVec">矢量</button>
+        <button class="btn {{showTrail ? 'on' : ''}}" bindtap="onTrail">轨迹</button>
+    </view>
+
+    <!-- 沙盒工具栏 -->
+    <view class="tools" wx:if="{{isSandbox}}">
+        <scroll-view scroll-x class="tscroll" enable-flex>
+            <view class="trow">
+                <button class="btn" data-k="box" bindtap="onAdd">＋方块</button>
+                <button class="btn" data-k="circle" bindtap="onAdd">＋圆球</button>
+                <button class="btn" data-k="tri" bindtap="onAdd">＋三角</button>
+                <button class="btn" data-k="wall" bindtap="onAdd">＋挡板</button>
+                <button class="btn" data-k="ramp" bindtap="onAdd">＋斜面</button>
+                <button class="btn" data-k="bomb" bindtap="onAdd">＋炸药</button>
+                <button class="btn" data-k="nuke" bindtap="onAdd">＋核弹</button>
+                <button class="btn pri" bindtap="onDetonate">引爆</button>
+                <button class="btn {{sbSpark ? 'on' : ''}}" bindtap="onSpark">点火{{sbSpark ? '·开' : ''}}</button>
+                <button class="btn" bindtap="onEnv">{{sbEnvTxt}}</button>
+                <button class="btn" data-k="gas" bindtap="onPour">倒汽油</button>
+                <button class="btn" data-k="water" bindtap="onPour">倒水</button>
+                <button class="btn" data-k="spring" bindtap="onLink">〰 弹簧</button>
+                <button class="btn" data-k="rope" bindtap="onLink">⟋ 绳索</button>
+                <button class="btn" data-k="pulley" bindtap="onLink">◎ 滑轮</button>
+                <button class="btn" bindtap="onDblCycle">双击:{{sbDbl}}</button>
+                <button class="btn" bindtap="onDel">删除</button>
+                <button class="btn" bindtap="onUndo">撤销</button>
+                <button class="btn" bindtap="onFit">适配</button>
+                <button class="btn" bindtap="onClear">清空</button>
+            </view>
+        </scroll-view>
+        <view class="sbplay">
+            <button class="btn {{sbRun ? '' : 'pri'}}" bindtap="onPlay">{{sbRun ? '⏸ 暂停' : '▶ 运行'}}</button>
+            <text class="sbtip">单指拖动物体 · 双指缩放旋转 · 双击放置</text>
+        </view>
+    </view>
+
+    <!-- 模块开关（连接体实验台的惯性力等） -->
+    <view class="card" wx:if="{{toggles.length}}">
+        <view class="card-title"><text>实验开关</text></view>
+        <view class="tglrow">
+            <button class="btn {{item.on ? 'on' : ''}}" wx:for="{{toggles}}" wx:key="key"
+                data-key="{{item.key}}" bindtap="onToggle">{{item.label}}</button>
+        </view>
+    </view>
+
+    <!-- 参数 -->
+    <view class="card" wx:if="{{params.length}}">
+        <view class="card-title">
+            <text>参数</text>
+            <text class="tag">{{title}}</text>
+        </view>
+        <view class="prow" wx:for="{{params}}" wx:key="key">
+            <text class="plabel">{{item.label}}</text>
+            <slider class="pslider" min="{{item.min}}" max="{{item.max}}" step="{{item.step}}"
+                value="{{item.value}}" activeColor="#2563eb" backgroundColor="#e2e8f0"
+                block-size="20" data-i="{{index}}" bindchanging="onParamLive"
+                bindchange="onParamSet" />
+            <text class="pval">{{item.valueText}}</text>
+        </view>
+        <view class="brief" wx:if="{{brief}}">{{brief}}</view>
+    </view>
+
+    <!-- 实时数据 -->
+    <view class="card" wx:if="{{rows.length}}">
+        <view class="card-title">
+            <text>实时数据</text>
+            <text class="tag">仿真值</text>
+        </view>
+        <view class="rrow" wx:for="{{rows}}" wx:key="k">
+            <text class="rk">{{item.k}}</text>
+            <text class="rv">{{item.v}}</text>
+        </view>
+    </view>
+
+    <!-- 例题 -->
+    <view class="card" wx:if="{{examples.length}}">
+        <view class="card-title">
+            <text>例题</text>
+            <text class="tag">理论答案对照</text>
+        </view>
+        <view class="ex" wx:for="{{examples}}" wx:key="i">
+            <view class="exhd">
+                <text class="extitle">{{item.title}}</text>
+                <text class="exlv {{item.hot ? 'hot' : ''}}">{{item.level}}</text>
+            </view>
+            <text class="exq">{{item.q}}</text>
+            <view class="exbar">
+                <button class="btn mini" data-i="{{index}}" bindtap="onLoadExample">载入这组参数</button>
+                <text class="exmore" data-i="{{index}}" bindtap="onToggleAnswer">{{item.open ? '收起答案' : '看答案'}}</text>
+            </view>
+            <view class="exa" wx:if="{{item.open}}">理论答案：{{item.answer}}</view>
+        </view>
+    </view>
+</view>
