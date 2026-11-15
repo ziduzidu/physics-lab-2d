@@ -1,0 +1,79 @@
+/* 全局样式：与网页版保持同一套浅色配色 */
+page {
+    min-height: 100%;
+    background: #f4f6fa;
+    color: #1f2937;
+    font-size: 28rpx;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+view, text, scroll-view {
+    box-sizing: border-box;
+}
+
+.card {
+    background: #fff;
+    border: 1rpx solid #e2e8f0;
+    border-radius: 16rpx;
+    padding: 18rpx 20rpx;
+    margin: 0 20rpx 18rpx;
+}
+
+.card-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 28rpx;
+    font-weight: 600;
+    margin-bottom: 12rpx;
+}
+
+.card-title .tag {
+    font-size: 22rpx;
+    color: #6b7280;
+    font-weight: 400;
+}
+
+.btn {
+    padding: 12rpx 22rpx;
+    border: 1rpx solid #e2e8f0;
+    background: #fff;
+    border-radius: 12rpx;
+    font-size: 25rpx;
+    color: #1f2937;
+    line-height: 1.35;
+    margin: 0;
+}
+
+.btn::after {
+    border: none;
+}
+
+.btn.pri {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+
+.btn.on {
+    background: #ecfeff;
+    border-color: #22d3ee;
+    color: #0e7490;
+    font-weight: 600;
+}
+
+.btn:active {
+    transform: translateY(2rpx);
+}
+
+.muted {
+    color: #6b7280;
+    font-size: 24rpx;
+}
+
+.empty {
+    padding: 60rpx 20rpx;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 26rpx;
+}
